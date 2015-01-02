@@ -86,7 +86,7 @@ bool Apploader_RunBackground(void) {
     
     ret = LWP_CreateThread(
         &thread, &Aploader_Main,
-        NULL, NULL, 0, THREAD_PRIO_IO);
+        NULL, NULL, 32 * 1024, THREAD_PRIO_IO);
         
     if (ret) {
         errno = ENOMEM;

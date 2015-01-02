@@ -5,14 +5,7 @@
 # A makefile script for generation of all brainslug modules
 ###############################################################################
 
-MODULES += console-gx
-MODULES += console-sd
-MODULES += gecko
-MODULES += https
-MODULES += libfat
-MODULES += libfat-sd
-MODULES += libsd
-MODULES += template
+MODULES += netslug_main
 
 ###############################################################################
 # Parameters
@@ -28,26 +21,16 @@ all: $(addsuffix _module,$(MODULES))
 
 %_module:
 	$Q$(MAKE) -C $*
-	
+
 ###############################################################################
-# Install rule
+# Release rule
 
-# Rule to install bslug.
-PHONY += install
-install : $(addsuffix _module_install,$(MODULES))
-	
-%_module_install: $(BSLUGDIR)/modules
-	$(LOG)
-	$Qcp -r $* $(BSLUGDIR)/modules
-	
-$(BSLUGDIR)/modules:
-	-$Qmkdir $(BSLUGDIR)/modules
+PHONY += release
+release: $(addsuffix _module_release,$(MODULES))
 
-# Rule to install bslug.
-PHONY += uninstall
-uninstall : 
+%_module_release: %_module
 	$(LOG)
-	-$Qrm -rf $(BSLUGDIR)/modules
+	$Qcp $*/bin/$*.mod $(RELEASE_DIR)/$*.mod 
 
 ###############################################################################
 # Clean rule

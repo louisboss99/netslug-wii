@@ -162,6 +162,12 @@ static size_t Console_fwrite(
         /* call down to original function */
         return fwrite(ptr, size, nmemb, stream);
 }
+void Console_Write(char *s) {
+    for (int i = 0; s[i]; i++) {
+        Console_PutChar(s[i], COLOUR_FG);
+    }
+}
+BSLUG_EXPORT(Console_Write);
 static void Console_PutChar(char c, unsigned int fg) {
     if (FB_WIDTH == 0 || FB_HEIGHT == 0)
         return;

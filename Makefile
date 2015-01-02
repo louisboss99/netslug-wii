@@ -95,7 +95,7 @@ MAP    ?= $(BIN)/boot.map
 # Variable init
 
 # The names of libraries to use.
-LIBS     := ogc mxml fat
+LIBS     := ogc mxml fat bte wiiuse
 # The source files to compile.
 SRC      :=
 # Phony targets
@@ -115,28 +115,6 @@ PHONY += all
 all : $(TARGET) $(BIN)/boot.elf
 
 ###############################################################################
-# Install rule
-
-BSLUGDIR := $(DEVKITPRO)/bslug
-
-# Rule to install bslug.
-PHONY += install
-install : bslug_include modules symbols bslug.ld  bslug_elf.ld
-	$(LOG)
-	-$Qmkdir $(BSLUGDIR)
-	$Qcp -r bslug_include $(BSLUGDIR)/include
-	$Q$(MAKE) -C modules install BSLUGDIR=$(BSLUGDIR)
-	$Qcp -r symbols $(BSLUGDIR)
-	$Qcp -r bslug.ld $(BSLUGDIR)
-	$Qcp -r bslug_elf.ld $(BSLUGDIR)
-
-# Rule to install bslug.
-PHONY += uninstall
-uninstall : 
-	$(LOG)
-	-$Qrm -rf $(BSLUGDIR)
-	
-###############################################################################
 # Release rules
 
 PHONY += release
@@ -144,14 +122,13 @@ release: $(TARGET) meta.xml icon.png
 	$(LOG)
 	-$Qmkdir $(RELEASE)
 	-$Qmkdir $(RELEASE)/apps
-	-$Qmkdir $(RELEASE)/apps/brainslug
-	$Qcp -r $(TARGET) $(RELEASE)/apps/brainslug
-	$Qcp -r meta.xml $(RELEASE)/apps/brainslug
-	$Qcp -r icon.png $(RELEASE)/apps/brainslug
-	-$Qmkdir $(RELEASE)/bslug
-	$Qcp -r symbols $(RELEASE)/bslug
-	-$Qmkdir $(RELEASE)/bslug/modules
+	-$Qmkdir $(RELEASE)/apps/netslug
+	$Qcp -r $(TARGET) $(RELEASE)/apps/netslug
+	$Qcp -r symbols $(RELEASE)/apps/netslug
+	-$Qmkdir $(RELEASE)/apps/netslug/modules
 	$Qcp -r USAGE $(RELEASE)/readme.txt
+	$Qcp config.ini $(RELEASE)/apps/netslug/config.ini
+	$Q$(MAKE) -C modules release RELEASE_DIR=../$(RELEASE)/apps/netslug/modules
 
 ###############################################################################
 # Recursive rules

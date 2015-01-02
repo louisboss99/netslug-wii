@@ -4,3 +4,11 @@ release
 *.o
 *.d
 *.out
+*.opensdf
+*.sdf
+*.sln
+*.suo
+*.vcxproj
+*.filters
+*.user
+*.log

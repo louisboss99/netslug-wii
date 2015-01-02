@@ -30,4 +30,8 @@
 
 #define MB_CUR_MAX 6
 
+#define RAND_MAX 65535
+
+int rand(void);
+
 #endif /* _STDLIB_H_ */

@@ -1,3 +1,34 @@
+Wii NetPlay (working title) by MrBean35000vr and Chadderz
+
+This is a Wii homebrew app that attempts to add online gameplay to Wii games
+that feature local multiplayer. It is based off BrainSlug Wii, the original
+README can be seen below. (Repository of BrainSlug can be found at
+https://github.com/Chadderz121/brainslug-wii).
+
+It is designed primarily to add online multiplayer to New Super Mario Bros.
+Wii, but may be functional with other games.
+
+The connection procedure is performed by a modified version of BrainSlug that
+has been outfitted with networking capabilities. It loads a single BrainSlug
+module (netplay_main.mod) that does the majority of the work in-game, including
+controller synchronisation, maintaining the connection, and other similar
+tasks.
+
+It's worth noting that all of this is still, as Chadderz describes it, "hacky".
+The current code only supports 2 players, and synchronisation is not guaranteed
+on any game at all, including New Super Mario Bros. Wii (but it is pretty
+good), and input latency on the guest can be very high. There's a lot of static
+code such as controller assignments and input buffer size which cannot be
+adjusted from the Wii itself, but could be changed at the source if necessary.
+
+In order to build the app and all required parts, run "make release" at the
+root level. It will create a "release" folder, whose contents can be copied
+directly to the SD card and should work immediately. Host IP/port assignment
+must be done manually, and can be done by changing the config.ini file which
+will be put at SD:/apps/netslug/config.ini.
+
+Original BrainSlug readme to follow:
+
 BrainSlug Wii
     by Chadderz
 
@@ -23,9 +54,6 @@ This project is in several parts:
 
 The game's symbols are found by a simple search which is explained in
 symbols/README.
-
-See INSTALLING for information about how to install and use BrainSlug for
-development purposes.
 
 See BUILDING for information about building the channel itself.
 
