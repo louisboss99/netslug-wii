@@ -25,7 +25,7 @@ In order to build the app and all required parts, run "make release" at the
 root level. It will create a "release" folder, whose contents can be copied
 directly to the SD card and should work immediately. Host IP/port assignment
 must be done manually, and can be done by changing the config.ini file which
-will be put at SD:/apps/netslug/config.ini.
+will be put at SD:/apps/netslug/config.ini. See BUILDING for more info.
 
 Original BrainSlug readme to follow:
 
