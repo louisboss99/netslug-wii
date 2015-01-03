@@ -220,9 +220,6 @@ struct ctrlPacket {
 	{
 		struct
 		{
-			int dance_82b0;
-			int dance_a6cc;
-			unsigned short dance_82ae;
 			unsigned char dance_a6c9;
 			unsigned char dance_a6ca;
 			unsigned char dance_a6cb;
@@ -805,9 +802,6 @@ static void* sendThread_main(void *arg)
 			_CPU_ISR_Disable(isr);
 			if (memcmp((char *)0x80000000, "SMN", 3) == 0) 
 			{
-				currentHostControlPacketBeingConstructed.game.SMN.dance_82b0 = SMNDance_GetUnkown_82b0();
-				currentHostControlPacketBeingConstructed.game.SMN.dance_a6cc = SMNDance_GetUnkown_a6cc();
-				currentHostControlPacketBeingConstructed.game.SMN.dance_82ae = SMNDance_GetUnkown_82ae();
 				currentHostControlPacketBeingConstructed.game.SMN.dance_a6c9 = SMNDance_GetUnkown_a6c9();
 				currentHostControlPacketBeingConstructed.game.SMN.dance_a6ca = SMNDance_GetMask();
 				currentHostControlPacketBeingConstructed.game.SMN.dance_a6cb = SMNDance_GetUnkown_a6cb();
