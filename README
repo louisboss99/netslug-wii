@@ -21,11 +21,12 @@ good), and input latency on the guest can be very high. There's a lot of static
 code such as controller assignments and input buffer size which cannot be
 adjusted from the Wii itself, but could be changed at the source if necessary.
 
-In order to build the app and all required parts, run "make release" at the
-root level. It will create a "release" folder, whose contents can be copied
-directly to the SD card and should work immediately. Host IP/port assignment
-must be done manually, and can be done by changing the config.ini file which
-will be put at SD:/apps/netslug/config.ini. See BUILDING for more info.
+In order to build the app and all required parts, run "make -j" followed by
+"make release" at the root level. It will create a "release" folder, whose 
+contents can be copied directly to the SD card and should work immediately. 
+Host IP/port assignment must be done manually, and can be done by changing 
+the config.ini file which will be put at SD:/apps/netslug/config.ini. 
+See BUILDING for more info.
 
 Original BrainSlug readme to follow:
 
