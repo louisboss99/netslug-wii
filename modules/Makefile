@@ -30,7 +30,7 @@ release: $(addsuffix _module_release,$(MODULES))
 
 %_module_release: %_module
 	$(LOG)
-	$Qcp $*/bin/$*.mod $(RELEASE_DIR)/$*.mod 
+	$Qcp $*/bin/$*.mod $(RELEASE_DIR)/$*.mod
 
 ###############################################################################
 # Clean rule
