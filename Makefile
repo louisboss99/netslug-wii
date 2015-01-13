@@ -238,6 +238,7 @@ list  : $(LIST)
 PHONY += clean
 clean : 
 	$Qrm -rf $(wildcard $(BUILD) $(BIN) $(RELEASE))
+	$Q$(MAKE) -C modules clean
 
 ###############################################################################
 # Phony targets

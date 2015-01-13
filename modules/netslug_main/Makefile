@@ -16,12 +16,13 @@ ifeq ($(strip $(DEVKITPPC)),)
   $(error "Please set DEVKITPPC in your environment. export DEVKITPPC=<path to>devkitPPC")
 endif
 
-BSLUGDIR := $(DEVKITPRO)/bslug
+BSLUGDIR := ../../
+GCC_VER := $(shell $(DEVKITPPC)/bin/powerpc-eabi-gcc -dumpversion)
 
 #PATH := $(DEVKITPPC)/bin:$(PATH)
-LIB_INC_DIRS := $(DEVKITPPC)/lib/gcc/powerpc-eabi/4.6.3/include \
-                $(DEVKITPPC)/lib/gcc/powerpc-eabi/4.6.3/include-fixed \
-                ../../bslug_include
+LIB_INC_DIRS := $(DEVKITPPC)/lib/gcc/powerpc-eabi/$(GCC_VER)/include \
+                $(DEVKITPPC)/lib/gcc/powerpc-eabi/$(GCC_VER)/include-fixed \
+                $(BSLUGDIR)/bslug_include
 
 include makefile.mk
 
