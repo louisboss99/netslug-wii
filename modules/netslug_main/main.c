@@ -191,6 +191,7 @@ struct sendPacket {
 	{
 		struct
 		{
+			int frameNumberToDeliverOn;
 			int wiimote;
 			WPADDataFormat_t format;
 			WPADStatus_t status;
@@ -209,6 +210,7 @@ struct sendPacket {
 struct ctrlPacket {
 	int frameNumber;
 	long long frameSeed;
+	bool haveSentOrRecv;
 	bool haveInput[4];
 	WPADDataFormat_t formats[4];
 	WPADStatus_t status[4];
@@ -230,6 +232,9 @@ struct ctrlPacket {
 #define IOCTL_BUFFER_SIZE 20
 
 #define MAX_PLAYERS 2
+#define NUMBER_OF_INPUTS_TO_WAIT_FOR 2
+#define HOSTS_WIIMOTE_NUMBER 0
+#define CLIENTS_WIIMOTE_NUMBER 1
 
 static struct IoctlManager {
 	int state; // 0 = Invalid (callback used), 1 = Called ioctlasync, 2 = received real callback
@@ -366,7 +371,6 @@ static inline void printInt(int value)
 #define nanosecs_to_ticks(nsec)		(((u64)(nsec)*(TB_TIMER_CLOCK/125))/8000)
 
 
-static struct ctrlPacket currentHostControlPacketBeingConstructed;
 static int ioctlsSent = 0;
 static int ioctlsRecv = 0;
 
@@ -430,19 +434,30 @@ static int IoctlBufferAllocator(unsigned int sector)
 // On client sends message to host (via sendBuffer & sendThread)
 static void ProcessPacket(struct sendPacket *pkt)
 {
+	int isr;
+	_CPU_ISR_Disable(isr);
+	if (pkt->type == 0) // Controller data
+	{
+		int fntdo = pkt->data.controller.frameNumberToDeliverOn;
+		int index = fntdo % BUFFER_SIZE;
+
+		while (ctrlBuffer[index].frameNumber != fntdo)
+		{
+			WaitForNextFrame();
+		}
+		ctrlBuffer[index].formats[pkt->data.controller.wiimote] = pkt->data.controller.format;
+		ctrlBuffer[index].status[pkt->data.controller.wiimote] = pkt->data.controller.status;
+		ctrlBuffer[index].extension[pkt->data.controller.wiimote] = pkt->data.controller.extension;
+		ctrlBuffer[index].inputs[pkt->data.controller.wiimote] = pkt->data.controller.inputs;
+		ctrlBuffer[index].gravityUnit[pkt->data.controller.wiimote][0] = pkt->data.controller.gravityUnit[0];
+		ctrlBuffer[index].gravityUnit[pkt->data.controller.wiimote][1] = pkt->data.controller.gravityUnit[1];
+		ctrlBuffer[index].haveInput[pkt->data.controller.wiimote] = true;
+	}
 	if (host)
 	{
-		int isr;
-		_CPU_ISR_Disable(isr);
 		if (pkt->type == 0) // Controller data
 		{
-			currentHostControlPacketBeingConstructed.formats[pkt->data.controller.wiimote] = pkt->data.controller.format;
-			currentHostControlPacketBeingConstructed.status[pkt->data.controller.wiimote] = pkt->data.controller.status;
-			currentHostControlPacketBeingConstructed.extension[pkt->data.controller.wiimote] = pkt->data.controller.extension;
-			currentHostControlPacketBeingConstructed.inputs[pkt->data.controller.wiimote] = pkt->data.controller.inputs;
-			currentHostControlPacketBeingConstructed.gravityUnit[pkt->data.controller.wiimote][0] = pkt->data.controller.gravityUnit[0];
-			currentHostControlPacketBeingConstructed.gravityUnit[pkt->data.controller.wiimote][1] = pkt->data.controller.gravityUnit[1];
-			currentHostControlPacketBeingConstructed.haveInput[pkt->data.controller.wiimote] = true;
+			// Already done above
 		}
 		else if (pkt->type == 1)
 		{
@@ -453,14 +468,10 @@ static void ProcessPacket(struct sendPacket *pkt)
 		{
 			Console_Write("[PKT] Unknown packet received!\n");
 		}
-		_CPU_ISR_Restore(isr);
 	}
 	else
 	{
 		static int sendBufferPos = 0;
-		int isr;
-		
-		_CPU_ISR_Disable(isr);
 		
 		while (sendBuffer[sendBufferPos].sent == 1)
 		{
@@ -477,9 +488,8 @@ static void ProcessPacket(struct sendPacket *pkt)
 		{
 			sendBufferPos = 0;
 		}
-		
-		_CPU_ISR_Restore(isr);
 	}
+	_CPU_ISR_Restore(isr);
 }
 
 static ios_fd_t MyIOS_Open(const char *filepath, ios_mode_t mode)
@@ -505,52 +515,6 @@ static inline long long gettime()
 			: "=r"(low), "=r"(high) : : "5");
 	return ((long long)high << 32) | low;
 }
-/*
-static bool ProcessIoctlQueue(bool canCall)
-{
-	int isr;
-	_CPU_ISR_Disable(isr);
-	static int IoctlBufferPos = 0;
-	while (IoctlBuffer[IoctlBufferPos].state != 0 && IoctlBuffer[IoctlBufferPos].callbackDueFrame != -1 && frameCount >= IoctlBuffer[IoctlBufferPos].callbackDueFrame)
-	{
-		if (IoctlBuffer[IoctlBufferPos].state != 2)
-		{
-			_CPU_ISR_Restore(isr);
-			return false;
-		}
-		if (!canCall) 
-		{
-			_CPU_ISR_Restore(isr);
-			return true;
-		}
-
-		ios_cb_t cb = IoctlBuffer[IoctlBufferPos].callback;
-		usr_t usrData = IoctlBuffer[IoctlBufferPos].userData;
-		IoctlBuffer[IoctlBufferPos].state = 0;
-		OSWakeupThread(&IoctlBufferThreadQueue);
-
-		IoctlBufferPos++;
-		if (IoctlBufferPos >= IOCTL_BUFFER_SIZE)
-		{
-			IoctlBufferPos = 0;
-		}
-
-		Console_Write("[DECC] Callback ");
-		printInt(frameCount);
-		Console_Write(" ");
-		printInt(ioctlsSent);
-		Console_Write(" ");
-		printInt(ioctlsRecv);
-		Console_Write("\n");
-
-		cb(1, usrData);
-		ioctlsRecv++;
-	}
-	_CPU_ISR_Restore(isr);
-	return true;
-}
-*/
-
 
 static ios_ret_t MyIOS_IoctlAsync(
     ios_fd_t fd, int ioctl, const void *input, size_t input_length,
@@ -718,7 +682,7 @@ static bool MyOSCreateThread(
 	{
 		for (int i = 0; i < 4; i++)
 		{
-			currentHostControlPacketBeingConstructed.status[i] = WPAD_STATUS_DISCONNECTED;
+			ctrlBuffer[0].status[i] = WPAD_STATUS_DISCONNECTED;
 		}
 		OSInitThreadQueue(&framewaitqueue);
 		OSInitThreadQueue(&wpadReadQueue);
@@ -771,12 +735,19 @@ static void* sendThread_main(void *arg)
 	int sendBufferPos = 0;
 	int ctrlBufferPos = 0;
 	int nextFrameToSend = 0;
+	long long frameSeed = 0;
+	
+	// Mark the first BUFFER_SIZE frames as ready (since they're, by definition, unused).
+	for (int i = 0; i < BUFFER_SIZE; i++)
+	{
+		ctrlBuffer[i].frameNumber = i;
+	}
 
 	while (true)
 	{
 		if (host)
 		{
-			while (frameCount - 1 + BUFFER_SIZE <= nextFrameToSend)
+			while (ctrlBuffer[ctrlBufferPos].frameNumber != nextFrameToSend)
 			{
 				WaitForNextFrame();
 			}
@@ -784,31 +755,30 @@ static void* sendThread_main(void *arg)
 			// Wait for all controllers to be available
 			if (nextFrameToSend > BUFFER_SIZE)
 			{
-				for (int i = 0; i < 2; i++)
+				while (!ctrlBuffer[ctrlBufferPos].haveInput[HOSTS_WIIMOTE_NUMBER])
 				{
-					while (!currentHostControlPacketBeingConstructed.haveInput[i])
-					{
-						WaitForNextFrame();
-					}
+					WaitForNextFrame();
 				}
 			}
-			for (int i = nextFrameToSend > BUFFER_SIZE ? 2 : 0; i < 4; i++)
-			{
-				currentHostControlPacketBeingConstructed.status[i] = WPAD_STATUS_DISCONNECTED;
-			}
-			currentHostControlPacketBeingConstructed.frameSeed = currentHostControlPacketBeingConstructed.frameSeed * 1103515245 + 12345;
-
 			int isr;
 			_CPU_ISR_Disable(isr);
+			// Disconnect ALL controllers until frame BUFFER_SIZE.
+			// Then just disconnect the ones we aren't using.
+			for (int i = nextFrameToSend > BUFFER_SIZE ? NUMBER_OF_INPUTS_TO_WAIT_FOR : 0; i < 4; i++)
+			{
+				ctrlBuffer[ctrlBufferPos].status[i] = WPAD_STATUS_DISCONNECTED;
+				ctrlBuffer[ctrlBufferPos].haveInput[i] = true;
+			}
+			frameSeed = frameSeed * 1103515245 + 12345;
+			ctrlBuffer[ctrlBufferPos].frameSeed = frameSeed;
+
 			if (memcmp((char *)0x80000000, "SMN", 3) == 0) 
 			{
-				currentHostControlPacketBeingConstructed.game.SMN.dance_a6c9 = SMNDance_GetUnkown_a6c9();
-				currentHostControlPacketBeingConstructed.game.SMN.dance_a6ca = SMNDance_GetMask();
-				currentHostControlPacketBeingConstructed.game.SMN.dance_a6cb = SMNDance_GetUnkown_a6cb();
+				ctrlBuffer[ctrlBufferPos].game.SMN.dance_a6c9 = SMNDance_GetUnkown_a6c9();
+				ctrlBuffer[ctrlBufferPos].game.SMN.dance_a6ca = SMNDance_GetMask();
+				ctrlBuffer[ctrlBufferPos].game.SMN.dance_a6cb = SMNDance_GetUnkown_a6cb();
 			}
 
-			ctrlBuffer[ctrlBufferPos] = currentHostControlPacketBeingConstructed;
-			ctrlBuffer[ctrlBufferPos].frameNumber = nextFrameToSend;
 			ctrlBuffer[ctrlBufferPos].callback_sector = 0;
 			for (int i = 0; i < IOCTL_BUFFER_SIZE; i++)
 			{
@@ -828,20 +798,14 @@ static void* sendThread_main(void *arg)
 				}
 			}
 
-			// 'Sprint' logic -- if we're far behind the target frame, don't actually wait for an input from each client.
-			if (frameCount + BUFFER_SIZE <= nextFrameToSend + 1)
-			{
-				for (int i = 0; i < 4; i++)
-				{
-					currentHostControlPacketBeingConstructed.haveInput[i] = false;
-				}
-			}
 			_CPU_ISR_Restore(isr);
 
 			while(reliable_send(communicationSock, &ctrlBuffer[ctrlBufferPos], sizeof(ctrlBuffer[ctrlBufferPos])) <= 0)
 			{
 				Console_Write("[SEND] Failure. OHHHHHH.\n");
 			}
+
+			ctrlBuffer[ctrlBufferPos].haveSentOrRecv = true;
 				
 			OSWakeupThread(&wpadReadQueue); // New data for WPADRead
 
@@ -905,18 +869,38 @@ static void* recvThread_main(void *arg)
 		}
 		else
 		{
+			struct ctrlPacket inPacket;
+			
+			while(reliable_recv(communicationSock, &inPacket, sizeof(inPacket)) <= 0)
+			{
+				Console_Write("[RECV] Failure. OHHHHHH.\n");
+			}
+
 			if (ctrlBuffer[ctrlBufferPos].frameNumber != 0)
 			{
-				while (ctrlBuffer[ctrlBufferPos].frameNumber >= frameCount - 1)
+				while (ctrlBuffer[ctrlBufferPos].frameNumber != inPacket.frameNumber)
 				{
 					WaitForNextFrame();
 				}
 			}
-			
-			while(reliable_recv(communicationSock, &ctrlBuffer[ctrlBufferPos], sizeof(ctrlBuffer[ctrlBufferPos])) <= 0)
-			{
-				Console_Write("[RECV] Failure. OHHHHHH.\n");
+
+			int isr;
+			_CPU_ISR_Disable(isr);
+			for (int i = 0; i < 4; i++) {
+				if (!inPacket.haveInput[i] && ctrlBuffer[ctrlBufferPos].haveInput[i])
+				{
+					inPacket.haveInput[i] = ctrlBuffer[ctrlBufferPos].haveInput[i];
+					inPacket.formats[i] = ctrlBuffer[ctrlBufferPos].formats[i];
+					inPacket.status[i] = ctrlBuffer[ctrlBufferPos].status[i];
+					inPacket.extension[i] = ctrlBuffer[ctrlBufferPos].extension[i];
+					inPacket.inputs[i] = ctrlBuffer[ctrlBufferPos].inputs[i];
+					inPacket.gravityUnit[i][0] = ctrlBuffer[ctrlBufferPos].gravityUnit[i][0];
+					inPacket.gravityUnit[i][1] = ctrlBuffer[ctrlBufferPos].gravityUnit[i][1];
+				}
 			}
+			ctrlBuffer[ctrlBufferPos] = inPacket;
+			ctrlBuffer[ctrlBufferPos].haveSentOrRecv = true;
+			_CPU_ISR_Restore(isr);
 			
 			OSWakeupThread(&wpadReadQueue); // New data for WPADRead
 
@@ -934,21 +918,21 @@ static void* recvThread_main(void *arg)
 static void* controllerThread_main(void* arg)
 {
 	Console_Write("[CTRL] Thread started.\n");
-	unsigned int frameTime = mftbl();
+	// The host skips the first BUFFER_SIZE inputs.
+	unsigned int nextFrameToSend = BUFFER_SIZE;
 
 	while (true)
 	{
-		while (mftbl() - frameTime <= millisecs_to_ticks(1000/60))
+		while (frameCount + BUFFER_SIZE <= nextFrameToSend + 1)
 		{
 			WaitForNextFrame();
 		}
-
-		frameTime+= millisecs_to_ticks(1000/60);
 		
 		struct sendPacket pkt;
 		pkt.type = 0;
 		pkt.clientNumber = host ? 0 : 1;
-		pkt.data.controller.wiimote = host ? 0 : 1;
+		pkt.data.controller.frameNumberToDeliverOn = nextFrameToSend;
+		pkt.data.controller.wiimote = host ? HOSTS_WIIMOTE_NUMBER : CLIENTS_WIIMOTE_NUMBER;
 		if (initCalled)
 		{
 			WPADRead(0, &pkt.data.controller.inputs);
@@ -963,6 +947,7 @@ static void* controllerThread_main(void* arg)
 		}
 
 		ProcessPacket(&pkt);
+		nextFrameToSend++;
 	}
 
 	return 0;
@@ -1106,6 +1091,26 @@ static void My__VIRetraceHandler(int isr, void *context)
 	bool stall = createdThread && (ctrlBuffer[nextFrameIndex].frameNumber != frameCount + 1);
 	int ioctlBufferIndex = -1;
 
+	if (!stall)
+	{
+		if (!ctrlBuffer[nextFrameIndex].haveSentOrRecv)
+		{
+			stall = true;
+		}
+	}
+
+	if (!stall)
+	{
+		for (int i = 0; i < NUMBER_OF_INPUTS_TO_WAIT_FOR; i++)
+		{
+			if (!ctrlBuffer[nextFrameIndex].haveInput[i])
+			{
+				stall = true;
+				break;
+			}
+		}
+	}
+
 	if (!stall && createdThread && ctrlBuffer[nextFrameIndex].callback_sector != 0)
 	{
 		for (int i = 0; i < IOCTL_BUFFER_SIZE; i++)
@@ -1214,6 +1219,13 @@ static void My__VIRetraceHandler(int isr, void *context)
 					}
 				}
 			}
+
+			ctrlBuffer[lastFrameIndex].haveSentOrRecv = false;
+			for (int i = 0; i < 4; i++)
+			{
+				ctrlBuffer[lastFrameIndex].haveInput[i] = false;
+			}
+			ctrlBuffer[lastFrameIndex].frameNumber += BUFFER_SIZE;
 		}
 		_CPU_FP_Restore(fp_isr);
 		__VIRetraceHandler(isr, context);
@@ -1258,7 +1270,7 @@ static void My__VIRetraceHandler(int isr, void *context)
 static int MyWPADSetDataFormat(int wiimote, WPADDataFormat_t format)
 {
 	currentFormat[wiimote] = format;
-	if (wiimote == 0)
+	if (wiimote == HOSTS_WIIMOTE_NUMBER)
 	{
 		Console_Write("[WPAD] Format change for Wiimote 0\n");
 		if (host)
@@ -1270,7 +1282,7 @@ static int MyWPADSetDataFormat(int wiimote, WPADDataFormat_t format)
 			return 0;
 		}
 	}
-	else if (wiimote == 1)
+	else if (wiimote == CLIENTS_WIIMOTE_NUMBER)
 	{
 		Console_Write("[WPAD] Format change for Wiimote 1\n");
 		if (!host)
@@ -1300,13 +1312,13 @@ static void MyWPADControlDpdCallback(int wiimote, int status)
 {
 	if (MyWPADControlDpdCallback_callback != 0)
 	{
-		MyWPADControlDpdCallback_callback(host ? 0 : 1, status);
+		MyWPADControlDpdCallback_callback(host ? HOSTS_WIIMOTE_NUMBER : CLIENTS_WIIMOTE_NUMBER, status);
 	}
 }
 
 static int MyWPADControlDpd(int wiimote, int command, WPADControlDpdCallback_t callback)
 {
-	if (wiimote == 0)
+	if (wiimote == HOSTS_WIIMOTE_NUMBER)
 	{
 		dpdEnabled[wiimote] = command > 0;
 		if (host)
@@ -1323,7 +1335,7 @@ static int MyWPADControlDpd(int wiimote, int command, WPADControlDpdCallback_t c
 			return 0;
 		}
 	}
-	else if (wiimote == 1)
+	else if (wiimote == CLIENTS_WIIMOTE_NUMBER)
 	{
 		dpdEnabled[wiimote] = command > 0;
 		if (!host)
