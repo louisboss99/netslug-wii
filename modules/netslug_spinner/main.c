@@ -132,6 +132,20 @@ static void Spinner_GXSetDispCopyDst(
     GXSetDispCopyDst(width, height);
 }
 
+static inline void Spinner_DimPixelPair(int x, int y) {
+    for (int fb = 0; fb < MAX_FRAME_BUFFER_COUNT; fb++) {
+        if (!spinner_frame_buffers[fb]) continue;
+        unsigned char *pixel_ptr =
+            (unsigned char *)spinner_frame_buffers[fb]
+                + spinner_fb_width * y * 2
+                + x * 2;
+        pixel_ptr[0] = pixel_ptr[0] > 64 ? pixel_ptr[0] - 64 : 0;
+        pixel_ptr[2] = pixel_ptr[2] > 64 ? pixel_ptr[2] - 64 : 0;
+#if FLUSH_CACHE
+        asm ("dcbf 0, %0" : : "r"((int)pixel_ptr & ~0x1f));
+#endif
+    }
+}
 static inline void Spinner_PutPixelPair(
     int x, int y,
     unsigned char y1, unsigned char y2, unsigned char u, unsigned char v
@@ -157,6 +171,25 @@ static void Spinner_Draw(int state, int type) {
     if (spinner_fb_width < SPINNER_SIZE ||
         spinner_fb_height < SPINNER_SIZE)
         return;
+    
+    if (state < (SPINNER_SIZE / 2 + SPINNER_DOT_SIZE) * 2) {
+        int dx = state * 2;
+        int dy = 0;
+        const int midx = spinner_fb_width / 2;
+        const int midy = spinner_fb_height / 2;
+        for (int i = 0; i <= state; i++) {
+            if (dx < SPINNER_SIZE / 2 + SPINNER_DOT_SIZE &&
+                dy < SPINNER_SIZE / 2 + SPINNER_DOT_SIZE
+            ) {
+                Spinner_DimPixelPair(midx + dx, midy + dy);
+                Spinner_DimPixelPair(midx - dx - 2, midy + dy);
+                Spinner_DimPixelPair(midx + dx, midy - dy - 1);
+                Spinner_DimPixelPair(midx - dx - 2, midy - dy - 1);
+            }
+            dx -= 2;
+            dy++;
+        }
+    }
 
     // Slow the animation down.
     if (state % 2) return;
