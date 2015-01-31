@@ -5,7 +5,7 @@
 # A makefile script for generation of all brainslug modules
 ###############################################################################
 
-MODULES += netslug_main
+MODULES += netslug_main netslug_spinner
 
 ###############################################################################
 # Parameters

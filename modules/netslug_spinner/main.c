@@ -30,6 +30,8 @@
 #include <rvl/GXFrameBuf.h>
 #include <rvl/vi.h>
 
+#include "../netslug_common.h"
+
 /* support any game id */
 BSLUG_MODULE_GAME("????");
 BSLUG_MODULE_NAME("NetPlay's Progress Light");
@@ -45,11 +47,17 @@ static void Spinner_VISetNextFrameBuffer(void *frame_buffer);
  *  Sets the copy height for the EFB to XFB copy to half the normal value. Calls
  *  the real GXSetDispCopyDst with half the height parameter. */
 static void Spinner_GXSetDispCopyDst(unsigned short width, unsigned short height);
-static void My__VIRetraceHandler(int isr, void *context);
+/* Replacement for _start.
+ *  Sets the handler needed to interact with netslug_main. Calls the real
+ * _start. */
+static void Spinner_start(void);
+
+// No headers declare _start, so we have to.
+void _start(void);
 
 BSLUG_MUST_REPLACE(VISetNextFrameBuffer, Spinner_VISetNextFrameBuffer);
 BSLUG_MUST_REPLACE(GXSetDispCopyDst, Spinner_GXSetDispCopyDst);
-BSLUG_MUST_REPLACE(__VIRetraceHandler, My__VIRetraceHandler);
+BSLUG_MUST_REPLACE(_start, Spinner_start);
 
 /* Power of 2 is more efficient. */
 #define SPINNER_SIZE 32
@@ -60,33 +68,6 @@ BSLUG_MUST_REPLACE(__VIRetraceHandler, My__VIRetraceHandler);
 /* Define this as 0 if you don't want a cache flush! */
 #define FLUSH_CACHE 1
 
-#define _CPU_FP_Enable( _isr_cookie ) \
-  { register unsigned long _disable_mask = 0; \
-    _isr_cookie = 0; \
-    __asm__ __volatile__ ( \
-      "mfmsr %0\n" \
-      "ori %1,%0,0x2000\n" \
-      "mtmsr %1\n" \
-      "extrwi %0,%0,1,18" \
-      : "=&r" ((_isr_cookie)), "=&r" ((_disable_mask)) \
-      : "0" ((_isr_cookie)), "1" ((_disable_mask)) \
-    ); \
-  }
-
-#define _CPU_FP_Restore( _isr_cookie )  \
-  { register unsigned long _enable_mask = 0; \
-    __asm__ __volatile__ ( \
-    "    cmpwi %0,0\n" \
-    "    bne 1f\n" \
-    "    mfmsr %1\n" \
-    "    rlwinm %1,%1,0,19,17\n" \
-    "    mtmsr %1\n" \
-    "1:" \
-    : "=r"((_isr_cookie)),"=&r" ((_enable_mask)) \
-    : "0"((_isr_cookie)),"1" ((_enable_mask)) \
-    ); \
-  }
-
 /* Current screen dimensions. */
 static int spinner_fb_width;
 static int spinner_fb_height;
@@ -94,6 +75,8 @@ static int spinner_fb_height;
 static void *spinner_frame_buffers[2];
 /* State of the animation. */
 static int spinner_state;
+/* Timeout to prevent over-eager spinner. */
+static int spinner_timeout;
 
 static void Spinner_VISetNextFrameBuffer(void *frame_buffer) {
     int i;
@@ -116,9 +99,6 @@ static void Spinner_VISetNextFrameBuffer(void *frame_buffer) {
         }
         spinner_frame_buffers[0] = frame_buffer;
     }
-
-    // Game must have advanced, so reset animation.
-    spinner_state = 0;
 
     // Call down to the real VISetNextFrameBuffer.
     VISetNextFrameBuffer(frame_buffer);
@@ -241,44 +221,30 @@ static void Spinner_Draw(int state, int type) {
         }
     }
 }
-static int frames = 0;
-static int type = 0;
-static void My__VIRetraceHandler(int isr, void *context)
-{
-    int fp_isr;
-    _CPU_FP_Enable(fp_isr);
 
-    if (frames++ < 900)
-    {
-        _CPU_FP_Restore(fp_isr);
-        __VIRetraceHandler(isr, context);
+// Saved handler to ensure we preserve chain.
+static frame_handler_t spinner_replaced_handler;
+
+static void Spinner_OnFrameAdvance(bool skipped) {
+    if (skipped) {
+        if (spinner_timeout > 0)
+            spinner_timeout--;
+        else
+            Spinner_Draw(spinner_state++, network_error ? 2 : 1);
+    } else {
+        // Game must have advanced, so reset animation.
+        spinner_state = 0;
+        spinner_timeout = 10;
     }
-    else
-    {
-        Spinner_Draw(spinner_state++, (type++ / 300) % 4);
-        static volatile unsigned short* const _viReg = (volatile unsigned short *)0xCC002000;
-        unsigned int intr;
-        // WE must clear the interrupt.
+    // Call down to saved handler.
+    if (spinner_replaced_handler)
+        spinner_replaced_handler(skipped);
+}
 
-        intr = _viReg[24];
-        if(intr&0x8000) {
-            _viReg[24] = intr&~0x8000;
-        }
-
-        intr = _viReg[26];
-        if(intr&0x8000) {
-            _viReg[26] = intr&~0x8000;
-        }
-
-        intr = _viReg[28];
-        if(intr&0x8000) {
-            _viReg[28] = intr&~0x8000;
-        }
-
-        intr = _viReg[30];
-        if(intr&0x8000) {
-            _viReg[30] = intr&~0x8000;
-        }
-        _CPU_FP_Restore(fp_isr);
-    }
+static void Spinner_start(void) {
+    // Register our frame advance handler.
+    spinner_replaced_handler = on_frame_advance;
+    on_frame_advance = Spinner_OnFrameAdvance;
+    // Call the real start.
+    _start();
 }

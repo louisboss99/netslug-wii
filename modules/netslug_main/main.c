@@ -32,6 +32,8 @@ typedef signed short s16;
 typedef signed int s32;
 typedef signed long long s64;
 
+#include "../netslug_common.h"
+
 #include <bslug.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -129,6 +131,20 @@ BSLUG_REPLACE(SMNDance_GetMask, MySMNDance_GetMask);
 BSLUG_REPLACE(SMNDance_Enabled, MySMNDance_Enabled);
 BSLUG_REPLACE(SMNDance_GetUnkown_a6cb, MySMNDance_GetUnkown_a6cb);
 BSLUG_REPLACE(rand, Myrand);
+
+// Symbols for bslug_common.h.
+#ifndef NDEBUG
+static void Debug_CheckFrameAdvanceHandler(bool skip);
+static int Debug_CheckVariable = 0;
+frame_handler_t on_frame_advance = &Debug_CheckFrameAdvanceHandler;
+#else
+frame_handler_t on_frame_advance = 0;
+#endif
+
+int network_error = 0;
+
+BSLUG_EXPORT(on_frame_advance);
+BSLUG_EXPORT(network_error);
 
 static bool createdThread = false;
 static bool initCalled = false;
@@ -803,6 +819,7 @@ static void* sendThread_main(void *arg)
 			while(reliable_send(communicationSock, &ctrlBuffer[ctrlBufferPos], sizeof(ctrlBuffer[ctrlBufferPos])) <= 0)
 			{
 				Console_Write("[SEND] Failure. OHHHHHH.\n");
+				network_error = 1;
 			}
 
 			ctrlBuffer[ctrlBufferPos].haveSentOrRecv = true;
@@ -832,6 +849,7 @@ static void* sendThread_main(void *arg)
 			while(reliable_send(communicationSock, &sendBuffer[sendBufferPos], sizeof(sendBuffer[sendBufferPos])) <= 0)
 			{
 				Console_Write("[SEND] Failure. OHHHHHH.\n");
+				network_error = 1;
 			}
 			
 			sendBuffer[sendBufferPos].sent = 2;
@@ -863,6 +881,7 @@ static void* recvThread_main(void *arg)
 			while(reliable_recv(communicationSock, &inPacket, sizeof(inPacket)) <= 0)
 			{
 				Console_Write("[RECV] Failure. OHHHHHH.\n");
+				network_error = 1;
 			}
 
 			ProcessPacket(&inPacket);
@@ -874,6 +893,7 @@ static void* recvThread_main(void *arg)
 			while(reliable_recv(communicationSock, &inPacket, sizeof(inPacket)) <= 0)
 			{
 				Console_Write("[RECV] Failure. OHHHHHH.\n");
+				network_error = 1;
 			}
 
 			if (ctrlBuffer[ctrlBufferPos].frameNumber != 0)
@@ -1127,6 +1147,20 @@ static void My__VIRetraceHandler(int isr, void *context)
 				break;
 			}
 		}
+	}
+
+	if (on_frame_advance != 0)
+	{
+#ifndef NDEBUG
+		int check = Debug_CheckVariable;
+#endif
+		on_frame_advance(stall);
+#ifndef NDEBUG
+		if (check == Debug_CheckVariable)
+		{
+			Console_Write("[DECC] ERROR: on_frame_advance overwritten without chaining the handler. Read the comments people!\n");
+		}
+#endif
 	}
 
 	if (!stall)
@@ -1491,3 +1525,10 @@ static unsigned char MySMNDance_GetUnkown_a6cb(void)
 	_CPU_ISR_Restore(isr);
 	return result;
 }
+
+#ifndef NDEBUG
+static void Debug_CheckFrameAdvanceHandler(bool skip)
+{
+	Debug_CheckVariable++;
+}
+#endif
